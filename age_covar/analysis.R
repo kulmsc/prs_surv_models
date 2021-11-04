@@ -1,7 +1,7 @@
 library(survival)
 
-author <- "shah"
-#author = commandArgs(trailingOnly=TRUE)
+#author <- "michailidou"
+author = commandArgs(trailingOnly=TRUE)
 
 #ideally want abs risk val for each year between assessment and now (or from 60 to 80)
 
@@ -31,7 +31,11 @@ test_surv_df$sqage <- test_surv_df$age^2
 train_surv_df$real_age <- train_surv_df$age
 test_surv_df$real_age <- test_surv_df$age
 
-use_vars <- c("age", "sex", "PC1", "PC2", "PC3", "PC4", "PC5", "PC6", "PC7", "PC8", "PC9", "PC10", "score", "sqage", "dob")
+if("sex" %in% colnames(surv_df)){
+  use_vars <- c("age", "sex", "PC1", "PC2", "PC3", "PC4", "PC5", "PC6", "PC7", "PC8", "PC9", "PC10", "score", "sqage", "dob")
+} else {
+  use_vars <- c("age", "PC1", "PC2", "PC3", "PC4", "PC5", "PC6", "PC7", "PC8", "PC9", "PC10", "score", "sqage", "dob")
+}
 for(i in which(colnames(train_surv_df) %in% use_vars)){
   train_surv_df[,i] <- as.numeric(train_surv_df[,i])
   train_surv_df[,i] <- (train_surv_df[,i] - min(train_surv_df[,i]))/(max(train_surv_df[,i]) - min(train_surv_df[,i]))
@@ -62,8 +66,8 @@ if("sex" %in% colnames(surv_df)){
   base_sq_covars <- c("age + sqage + PC1 + PC2 + PC3 + PC4 + PC5 + PC6 + PC7 + PC8 + PC9 + PC10")
   score_sq_covars <- c("age + sqage + PC1 + PC2 + PC3 + PC4 + PC5 + PC6 + PC7 + PC8 + PC9 + PC10 + score")
 
-  base_int_covars <- c("age + sqage + age:sex + PC1 + PC2 + PC3 + PC4 + PC5 + PC6 + PC7 + PC8 + PC9 + PC10")
-  score_int_covars <- c("age + sqage + age:sex +  PC1 + PC2 + PC3 + PC4 + PC5 + PC6 + PC7 + PC8 + PC9 + PC10 + score")
+  base_int_covars <- c("age + sqage + PC1 + PC2 + PC3 + PC4 + PC5 + PC6 + PC7 + PC8 + PC9 + PC10")
+  score_int_covars <- c("age + sqage +  PC1 + PC2 + PC3 + PC4 + PC5 + PC6 + PC7 + PC8 + PC9 + PC10 + score")
 
   base_dob_covars <- c("dob + PC1 + PC2 + PC3 + PC4 + PC5 + PC6 + PC7 + PC8 + PC9 + PC10")
   score_dob_covars <- c("dob +  PC1 + PC2 + PC3 + PC4 + PC5 + PC6 + PC7 + PC8 + PC9 + PC10 + score")
@@ -144,6 +148,7 @@ test_surv_df$age <- test_surv_df$real_age/365
 x <- table(round(train_surv_df$age)[train_surv_df$pheno == 1])
 y <- table(round(train_surv_df$age)[train_surv_df$pheno == 0])
 y <- y[names(y) %in% names(x)]
+x <- x[names(x) %in% names(y)]
 borrow_ratio <- floor(min(y/x))
 
 parts_train_df <- list()
@@ -160,7 +165,7 @@ use_train_surv_df <- do.call("rbind", parts_train_df)
 
 
 
-cox_model_base <- coxph(as.formula(paste0("Surv(time, pheno) ~ ", all_base_covars[[i]])), data = use_train_surv_df)
+cox_model_base <- coxph(as.formula(paste0("Surv(time, pheno) ~ ", all_base_covars[[1]])), data = use_train_surv_df)
 
 base_conc_obj <- concordance(cox_model_base, newdata=test_surv_df)
 
@@ -170,7 +175,7 @@ cox_fit_base <- list("coef" = summary(cox_model_base)$coef, "time" = cox_fit_bas
 
 
 
-cox_model_score <- coxph(as.formula(paste0("Surv(time, pheno) ~ ", all_score_covars[[i]])), data = use_train_surv_df)
+cox_model_score <- coxph(as.formula(paste0("Surv(time, pheno) ~ ", all_score_covars[[1]])), data = use_train_surv_df)
 
 score_conc_obj <- concordance(cox_model_score, newdata=test_surv_df)
 

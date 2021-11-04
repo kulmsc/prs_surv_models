@@ -1,6 +1,6 @@
 library(Hmisc)
 
-#author <- "shah"
+#author <- "rheenen"
 author = commandArgs(trailingOnly=TRUE)
 
 big_data <- read.table("clean_big_data/init_clean_big_data.txt.gz", stringsAsFactors=F, header=T, sep="\t")
@@ -46,10 +46,12 @@ for(i in 1:length(useful_decoder)){
 
 
 bad_people <- unique(unlist(bad_people))
-big_data <- big_data[!(big_data$eid %in% bad_people),]
-
-big_data <- big_data[,-which(colnames(big_data) %in% bad_names)]
-
+if(length(bad_people) > 0){
+  big_data <- big_data[!(big_data$eid %in% bad_people),]
+}
+if(length(which(colnames(big_data) %in% bad_names)) > 0){
+  big_data <- big_data[,-which(colnames(big_data) %in% bad_names)]
+}
 
 
 

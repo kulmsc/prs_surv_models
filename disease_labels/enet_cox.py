@@ -32,16 +32,13 @@ for train_index, test_index in kf:
   str_train_y = np.core.records.fromarrays(train_y[:,[1,0]].transpose(), names='time, status', formats = '?, i8')
   str_test_y = np.core.records.fromarrays(test_y[:,[1,0]].transpose(), names='time, status', formats = '?, i8')
 
-  estimator = CoxnetSurvivalAnalysis( normalize=False, # Do not normalize, the data is already normalized in our case
-            l1_ratio=0.5, # Ratio between L1 and L2 regression penalties
-            verbose=True,
-            fit_baseline_model=True, # Fit the baselines
-            copy_X=False)
+  custom_alphas = np.logspace(1, 5, 50)/10000
+  estimator = CoxnetSurvivalAnalysis(alphas = custom_alphas, normalize=False, l1_ratio=0.5, verbose=True, fit_baseline_model=True, copy_X=False, max_iter = 1000, tol = 1e-04)
 
 
   #pdb.set_trace()
-  pd.DataFrame(train_x).to_csv("train_x.csv")
-  pd.DataFrame(train_y).to_csv("train_y.csv")
+  #pd.DataFrame(train_x).to_csv("train_x.csv")
+  #pd.DataFrame(train_y).to_csv("train_y.csv")
 
   #pdb.set_trace()
   estimator.fit(train_x, str_train_y)
@@ -55,12 +52,15 @@ for train_index, test_index in kf:
 
     curr_conc[i,1] = concordance_index_censored(test_y[:,1].astype("bool"), test_y[:,0], pred)[0]
 
+  pdb.set_trace()
 
   all_conc.append(curr_conc)
   all_coefs.append(estimator.coef_)
 
   n_fold += 1
 
+
+pdb.set_trace()
 
 all_conc = sum(all_conc)/len(all_conc)
 best_alpha = all_conc[all_conc[:,1] == max(all_conc[:,1]),0][0]
@@ -83,21 +83,19 @@ y = pd.read_csv("y_test.csv")
 x = pd.read_csv("test_df.gz")
 
 static_pred = estimator.predict(x)
+pdb.set_trace()
 
 pd.DataFrame(static_pred).to_csv("static_pred.txt.gz", header = False)
 
-pred = estimator.predict_cumulative_hazard_function(x)
-del x
+#pred = estimator.predict_cumulative_hazard_function(x)
+#del x
 
-input_time = np.arange(10, max(y["time"].to_numpy()), 10)
-cum_haz_pred = np.zeros((y.shape[0], len(input_time)))
-for i in range(cum_haz_pred.shape[0]):
-  cum_haz_pred[i,:] = pred[i](input_time)
+#input_time = np.arange(10, max(y["time"].to_numpy()), 10)
+#cum_haz_pred = np.zeros((y.shape[0], len(input_time)))
+#for i in range(cum_haz_pred.shape[0]):
+#  cum_haz_pred[i,:] = pred[i](input_time)
 
-pd.DataFrame(cum_haz_pred).to_csv("cum_haz_pred.txt.gz", header = False)
-pd.DataFrame(input_time).to_csv("input_time.txt.gz", header = False)
+#pd.DataFrame(cum_haz_pred).to_csv("cum_haz_pred.txt.gz", header = False)
+#pd.DataFrame(input_time).to_csv("input_time.txt.gz", header = False)
 
-#should set up a script to do cv
-#just use the prediction function since the baseline hazard or survival will be the same for everyone
-#then calculate concordance for each alpha
 print("done")
