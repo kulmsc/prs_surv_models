@@ -2,8 +2,8 @@ library(survival)
 library(iCARE)
 library(riskRegression)
 
-author <- "jin"
-#author = commandArgs(trailingOnly=TRUE)
+#author <- "christophersen"
+author = commandArgs(trailingOnly=TRUE)
 
 #ideally want abs risk val for each year between assessment and now (or from 60 to 80)
 
@@ -36,6 +36,9 @@ if("sex" %in% colnames(surv_df)){
 
 #train_surv_df <- train_surv_df[1:50000,]
 #test_surv_df <- test_surv_df[1:3200,]
+train_surv_df$id <- 1:nrow(train_surv_df)
+test_surv_df$id <- 1:nrow(test_surv_df)
+
 
 print("RR")
 #####################################################################################
@@ -45,48 +48,50 @@ print("RR")
 
 rr_model_base <- CSC(formula = as.formula(paste0("Hist(time, event_type) ~ ", base_covars)), data = train_surv_df)
 rr_fit_base <- predict(rr_model_base, newdata = test_surv_df, cause = "diagnosis", times = seq(365, max(test_surv_df$time), 365))
-rr_fit_base <- list("time" = rr_fit_base$times, "risk" = rr_fit_base$absRisk)
+cox_model_conc <- coxph(Surv(time, pheno) ~ rr_fit_base$absRisk[,14], data = test_surv_df)
+rr_fit_base <- list("time" = rr_fit_base$times, "risk" = rr_fit_base$absRisk, "conc" = cox_model_conc$conc)
 
 rr_model_score <- CSC(formula = as.formula(paste0("Hist(time, event_type) ~ ", score_covars)), data = train_surv_df)
 rr_fit_score <- predict(rr_model_score, newdata = test_surv_df, cause = "diagnosis", times = seq(365, max(test_surv_df$time), 365))
+cox_model_conc <- coxph(Surv(time, pheno) ~ rr_fit_score$absRisk[,14], data = test_surv_df)
 rr_fit_coef <- summary(rr_model_score$models[[3]])$coefficients[nrow(summary(rr_model_score$models[[3]])$coefficients),]
-rr_fit_score <- list("time" = rr_fit_score$times, "risk" = rr_fit_score$absRisk, "coef" = rr_fit_coef)
+rr_fit_score <- list("time" = rr_fit_score$times, "risk" = rr_fit_score$absRisk, "coef" = rr_fit_coef, "conc" = cox_model_conc$conc)
 
 
 
-rr_fit_subset_base <- list()
-rr_fit_subset_score <- list()
-rr_subset_eids <- list()
-rr_subset_coefs <- list()
-u_age <- sort(unique(round(train_surv_df$age)))
-u_age <- u_age[3:(length(u_age)-2)]
-ii <- 1
-for(i in 1:length(u_age)){
-  sub_train_df <- train_surv_df[round(train_surv_df$age) - 1 < u_age[i] & round(train_surv_df$age) + 1 > u_age[i],]
-  sub_test_df <- test_surv_df[round(test_surv_df$age) - 1 < u_age[i] & round(test_surv_df$age) + 1 > u_age[i],]
-  if(sum(sub_train_df$event_type == "diagnosis") > 10 & sum(sub_test_df$event_type == "diagnosis") > 10){
+#rr_fit_subset_base <- list()
+#rr_fit_subset_score <- list()
+#rr_subset_eids <- list()
+#rr_subset_coefs <- list()
+#u_age <- sort(unique(round(train_surv_df$age)))
+#u_age <- u_age[3:(length(u_age)-2)]
+#ii <- 1
+#for(i in 1:length(u_age)){
+#  sub_train_df <- train_surv_df[round(train_surv_df$age) - 1 < u_age[i] & round(train_surv_df$age) + 1 > u_age[i],]
+#  sub_test_df <- test_surv_df[round(test_surv_df$age) - 1 < u_age[i] & round(test_surv_df$age) + 1 > u_age[i],]
+#  if(sum(sub_train_df$event_type == "diagnosis") > 10 & sum(sub_test_df$event_type == "diagnosis") > 10){
+#
+#    rr_model_base <- CSC(formula =  as.formula(paste0("Hist(time, event_type) ~ ", base_covars)), data = sub_train_df)
+#    rr_fit_subset_base[[ii]] <- predict(rr_model_base, newdata = sub_test_df, cause = "diagnosis", times = seq(365, max(test_surv_df$time), 365))
+#
+#    rr_model_score <- CSC(formula = as.formula(paste0("Hist(time, event_type) ~ ", score_covars)), data = sub_train_df)
+#    rr_fit_subset_score[[ii]] <- predict(rr_model_score, newdata = sub_test_df[i,], cause = "diagnosis", times = seq(365, max(test_surv_df$time), 365))
+#    rr_subset_coefs[[ii]] <- summary(rr_model_score$models[[3]])$coefficients[nrow(summary(rr_model_score$models[[3]])$coefficients),]
+#
+#    rr_subset_eids[[ii]] <- sub_test_df$eid
+#
+#    ii <- ii + 1
+#  } 
+#}
 
-    rr_model_base <- CSC(formula =  as.formula(paste0("Hist(time, event_type) ~ ", base_covars)), data = sub_train_df)
-    rr_fit_subset_base[[ii]] <- predict(rr_model_base, newdata = sub_test_df, cause = "diagnosis", times = seq(365, max(test_surv_df$time), 365))
+#rr_subset_coefs <- Reduce("+", rr_subset_coefs)/length(rr_subset_coefs)
 
-    rr_model_score <- CSC(formula = as.formula(paste0("Hist(time, event_type) ~ ", score_covars)), data = sub_train_df)
-    rr_fit_subset_score[[ii]] <- predict(rr_model_score, newdata = sub_test_df[i,], cause = "diagnosis", times = seq(365, max(test_surv_df$time), 365))
-    rr_subset_coefs[[ii]] <- summary(rr_model_score$models[[3]])$coefficients[nrow(summary(rr_model_score$models[[3]])$coefficients),]
-
-    rr_subset_eids[[ii]] <- sub_test_df$eid
-
-    ii <- ii + 1
-  } 
-}
-
-rr_subset_coefs <- Reduce("+", rr_subset_coefs)/length(rr_subset_coefs)
-
-rr_fit_subset_base <- list("time" = seq(365, max(test_surv_df$time), 365), "risk" = do.call("rbind", lapply(rr_fit_subset_base, function(x) x$absRisk)), "eids" = unlist(rr_subset_eids))
-rr_fit_subset_score <- list("time" = seq(365, max(test_surv_df$time), 365), "risk" = do.call("rbind", lapply(rr_fit_subset_score, function(x) x$absRisk)), "eids" = unlist(rr_subset_eids), "coef" = rr_subset_coefs)
+#rr_fit_subset_base <- list("time" = seq(365, max(test_surv_df$time), 365), "risk" = do.call("rbind", lapply(rr_fit_subset_base, function(x) x$absRisk)), "eids" = unlist(rr_subset_eids))
+#rr_fit_subset_score <- list("time" = seq(365, max(test_surv_df$time), 365), "risk" = do.call("rbind", lapply(rr_fit_subset_score, function(x) x$absRisk)), "eids" = unlist(rr_subset_eids), "coef" = rr_subset_coefs)
 
 
 
-all_rr_res <- list("base" = rr_fit_base, "score" = rr_fit_score, "sub_base" = rr_fit_subset_base, "sub_score" = rr_fit_subset_score)
+all_rr_res <- list("base" = rr_fit_base, "score" = rr_fit_score)
 
 
 
@@ -161,29 +166,31 @@ test_surv_df <- as.data.frame(test_surv_df)
 #cannot get cumhaz at a specific time
 ms_model_base <- coxph(as.formula(paste0("Surv(time, as.factor(event_type)) ~ ", base_covars)), id = id, data = train_surv_df)
 ms_fit_base <- faster_fit(ms_model_base, test_surv_df, seq(365, max(test_surv_df$time), 365))
-ms_fit_base <- list("time" = ms_fit_base[1,], "risk" = ms_fit_base[-1,])
+cox_model_conc <- coxph(Surv(time, pheno) ~ ms_fit_base[-1,14], data = test_surv_df)
+ms_fit_base <- list("time" = ms_fit_base[1,], "risk" = ms_fit_base[-1,], "conc" = cox_model_conc$conc)
 
 
 ms_model_score <- coxph(as.formula(paste0("Surv(time, as.factor(event_type)) ~ ", score_covars)), id = id, data = train_surv_df)
 ms_model_coef <- summary(ms_model_score)$coef[nrow(summary(ms_model_score)$coef),]
 ms_fit_score <- faster_fit(ms_model_score, test_surv_df, seq(365, max(test_surv_df$time), 365))
-ms_fit_score <- list("time" = ms_fit_score[1,], "risk" = ms_fit_score[-1,], "coef" = ms_model_coef)
+cox_model_conc <- coxph(Surv(time, pheno) ~ ms_fit_score[-1,14], data = test_surv_df)
+ms_fit_score <- list("time" = ms_fit_score[1,], "risk" = ms_fit_score[-1,], "coef" = ms_model_coef, "conc" = cox_model_conc$conc)
 
 
 
 #left censoring
-ms_model_base <- coxph(as.formula(paste0("Surv(time = age_start_time, time2 = age_end_time, event =  as.factor(event_type)) ~ ", base_covars)), id = id, data = train_surv_df)
-ms_fit_subset_base <- faster_fit(ms_model_base, test_surv_df, (60:80)*365)
-ms_fit_subset_base <- list("time" = ms_fit_subset_base[1,], "risk" = ms_fit_subset_base[-1,])
+#ms_model_base <- coxph(as.formula(paste0("Surv(time = age_start_time, time2 = age_end_time, event =  as.factor(event_type)) ~ ", base_covars)), id = id, data = train_surv_df)
+#ms_fit_subset_base <- faster_fit(ms_model_base, test_surv_df, (60:80)*365)
+#ms_fit_subset_base <- list("time" = ms_fit_subset_base[1,], "risk" = ms_fit_subset_base[-1,])
 
 
-ms_model_score <- coxph(as.formula(paste0("Surv(time = age_start_time, time2 = age_end_time, event =  as.factor(event_type)) ~ ", score_covars)), id = id, data = train_surv_df)
-ms_model_coef <- summary(ms_model_score)$coef[nrow(summary(ms_model_score)$coef),]
-ms_fit_subset_score <- faster_fit(ms_model_score, test_surv_df, (60:80)*365)
-ms_fit_subset_score <- list("time" = ms_fit_subset_score[1,], "risk" = ms_fit_subset_score[-1,], "coef" = ms_model_coef)
+#ms_model_score <- coxph(as.formula(paste0("Surv(time = age_start_time, time2 = age_end_time, event =  as.factor(event_type)) ~ ", score_covars)), id = id, data = train_surv_df)
+#ms_model_coef <- summary(ms_model_score)$coef[nrow(summary(ms_model_score)$coef),]
+#ms_fit_subset_score <- faster_fit(ms_model_score, test_surv_df, (60:80)*365)
+#ms_fit_subset_score <- list("time" = ms_fit_subset_score[1,], "risk" = ms_fit_subset_score[-1,], "coef" = ms_model_coef)
 
 
-all_ms_res <- list("base" = ms_fit_base, "score" = ms_fit_score, "sub_base" = ms_fit_subset_base, "sub_score" = ms_fit_subset_score)
+all_ms_res <- list("base" = ms_fit_base, "score" = ms_fit_score)
 
 
 
@@ -197,32 +204,33 @@ fg_diag <- finegray(Surv(time, event_type) ~ ., data = train_surv_df, etype="dia
 
 fg_model_base <- coxph(as.formula(paste0("Surv(fgstart, fgstop, fgstatus) ~ ", base_covars)), data = fg_diag, weight=fgwt)
 fg_fit_base <- faster_fit(fg_model_base, test_surv_df, seq(365, max(test_surv_df$time), 365), "fg")
-fg_fit_base <- list("time" = fg_fit_base[1,], "risk" = fg_fit_base[-1,])
+cox_model_conc <- coxph(Surv(time, pheno) ~ fg_fit_base[-1,14], data = test_surv_df)
+fg_fit_base <- list("time" = fg_fit_base[1,], "risk" = fg_fit_base[-1,], "conc" = cox_model_conc$conc)
 
 
 fg_model_score <- coxph(as.formula(paste0("Surv(fgstart, fgstop, fgstatus) ~ ", score_covars)), data = fg_diag, weight=fgwt)
 fg_fit_coef <- summary(fg_model_score)$coef[nrow(summary(fg_model_score)$coef),]
 fg_fit_score <- faster_fit(fg_model_score, test_surv_df, seq(365, max(test_surv_df$time), 365), "fg")
-fg_fit_score <- list("time" = fg_fit_score[1,], "risk" = fg_fit_score[-1,], "coef" = fg_fit_coef)
+cox_model_conc <- coxph(Surv(time, pheno) ~ fg_fit_score[-1,14], data = test_surv_df)
+fg_fit_score <- list("time" = fg_fit_score[1,], "risk" = fg_fit_score[-1,], "coef" = fg_fit_coef, "conc" = cox_model_conc$conc)
 
 
 
 #left censoring
-fg_diag <- finegray(Surv(time = age_start_time, time2 = age_end_time, event_type) ~ ., id = id, data = train_surv_df, etype="diagnosis")
+#fg_diag <- finegray(Surv(time = age_start_time, time2 = age_end_time, event_type) ~ ., id = id, data = train_surv_df, etype="diagnosis")
 
-fg_sub_model_base <- coxph(as.formula(paste0("Surv(fgstart, fgstop, fgstatus) ~ ", base_covars)), data = fg_diag, weight=fgwt)
-fg_sub_fit_base <- faster_fit(fg_sub_model_base, test_surv_df, (60:80)*365, "fg")
-fg_sub_fit_base <- list("time" = fg_sub_fit_base[1,], "risk" = fg_sub_fit_base[-1,])
-
-
-fg_sub_model_score <- coxph(as.formula(paste0("Surv(fgstart, fgstop, fgstatus) ~ ", score_covars)), data = fg_diag, weight=fgwt)
-fg_sub_fit_coef <- summary(fg_sub_model_score)$coef[nrow(summary(fg_sub_model_score)$coef),]
-fg_sub_fit_score <- faster_fit(fg_sub_model_score, test_surv_df, (60:80)*365, "fg")
-fg_sub_fit_score <- list("time" = fg_sub_fit_score[1,], "risk" = fg_sub_fit_score[-1,], "coef" = fg_sub_fit_coef)
+#fg_sub_model_base <- coxph(as.formula(paste0("Surv(fgstart, fgstop, fgstatus) ~ ", base_covars)), data = fg_diag, weight=fgwt)
+#fg_sub_fit_base <- faster_fit(fg_sub_model_base, test_surv_df, (60:80)*365, "fg")
+#fg_sub_fit_base <- list("time" = fg_sub_fit_base[1,], "risk" = fg_sub_fit_base[-1,])
 
 
-all_fg_res <- list("base" = fg_fit_base, "score" = fg_fit_score, "sub_base" = fg_sub_fit_base, "sub_score" = fg_sub_fit_score)
+#fg_sub_model_score <- coxph(as.formula(paste0("Surv(fgstart, fgstop, fgstatus) ~ ", score_covars)), data = fg_diag, weight=fgwt)
+#fg_sub_fit_coef <- summary(fg_sub_model_score)$coef[nrow(summary(fg_sub_model_score)$coef),]
+#fg_sub_fit_score <- faster_fit(fg_sub_model_score, test_surv_df, (60:80)*365, "fg")
+#fg_sub_fit_score <- list("time" = fg_sub_fit_score[1,], "risk" = fg_sub_fit_score[-1,], "coef" = fg_sub_fit_coef)
 
+
+all_fg_res <- list("base" = fg_fit_base, "score" = fg_fit_score)
 
 
 
@@ -348,9 +356,21 @@ if("sex" %in% colnames(surv_df)){
 }
 
 #check_model_inputs(apply.cov.profile = use_test_surv_df , model.log.RR = base_mod_log_or_1, model.ref.dataset = use_train_surv_df, model.cov.info = base_cov_info, model.formula = base_model_formula)
+get_left_time <- do.call("rbind", lapply(test_surv_df$age_start_time + 365, function(x) seq(x, x+(13*365), 365)))
+current_time <- (51:90)*365
+
+fix_func <- function(p, current_risk){
+  funcy <- splinefun(current_time, current_risk[p,])
+  new_vec <- funcy(get_left_time[p,])
+  new_vec[get_left_time[p,] < current_time[1]] <- NA
+  return(new_vec)
+}
+
+
 final_icare_base_res <- list()
 final_icare_score_res <- list()
-
+final_base_conc <- list()
+final_score_conc <- list()
 
 for(kk in 1:3){
 curr_death_rate <- death_rate[,c(1,kk+1)]
@@ -361,14 +381,14 @@ colnames(curr_disease_prev) <- c("age", "val")
 
 icare_full_res <- list()
 icare_score_res <- list()
-for(i in 1:20){
+for(i in 1:40){
   icare_full_res[[i]] <-  computeAbsoluteRisk(model.formula = base_model_formula,
                                          model.cov.info = base_cov_info,
                                          model.log.RR = base_model_log_or_1,
                                          model.ref.dataset = use_train_surv_df_base,
                                          model.disease.incidence.rates = curr_disease_prev,
                                          model.competing.incidence.rates = curr_death_rate,
-                                         apply.age.start = 60,
+                                         apply.age.start = 51,
                                          apply.age.interval.length = i,
                                          apply.cov.profile = use_test_surv_df_base,
                                          return.refs.risk = TRUE)
@@ -383,7 +403,7 @@ for(i in 1:20){
                                          model.ref.dataset = use_train_surv_df_score,
                                          model.disease.incidence.rates = curr_disease_prev,
                                          model.competing.incidence.rates = curr_death_rate,
-                                         apply.age.start = 60,
+                                         apply.age.start = 51,
                                          apply.age.interval.length = i,
                                          apply.cov.profile = use_test_surv_df_score,
                                          return.refs.risk = TRUE)
@@ -395,12 +415,25 @@ for(i in 1:20){
 final_icare_score_res[[kk]] <- do.call("cbind", icare_score_res)
 final_icare_base_res[[kk]] <- do.call("cbind", icare_full_res)
 
+final_icare_score_res[[kk]] <- do.call("rbind", lapply(1:nrow(final_icare_score_res[[kk]]), fix_func, final_icare_score_res[[kk]]))
+final_icare_base_res[[kk]] <- do.call("rbind", lapply(1:nrow(final_icare_base_res[[kk]]), fix_func, final_icare_base_res[[kk]]))
+
+cox_model_conc <- coxph(Surv(time, pheno) ~ final_icare_base_res[[kk]][,14], data = test_surv_df)
+final_base_conc[[kk]] <- cox_model_conc$conc
+cox_model_conc <- coxph(Surv(time, pheno) ~ final_icare_score_res[[kk]][,14], data = test_surv_df)
+final_score_conc[[kk]] <- cox_model_conc$conc
 }
 
 names(final_icare_score_res) <- c("gbd", "holt", "combo")
 names(final_icare_base_res) <- c("gbd", "holt", "combo")
+names(final_base_conc) <- c("gbd", "holt", "combo")
+names(final_score_conc) <- c("gbd", "holt", "combo")
 
-all_icare_res <- list("base" = final_icare_base_res, "score" = final_icare_score_res)
+
+all_icare_res <- list("base" = final_icare_base_res, "score" = final_icare_score_res, "conc_base" = final_base_conc, "conc_score" = final_score_conc)
+
+
+
 
 } else {
 

@@ -21,6 +21,9 @@ get_reclass_rate <- function(orig, new, add_label, time_label, cut_offs = c(0.9,
 #################################################################
 #################################################################
 #age
+print("age")
+
+
 all_files <- list.files("../age_covar/res")
 over_author_list <- list()
 all_authors <- rep(NA, length(all_files))
@@ -60,6 +63,8 @@ saveRDS(over_author_list, "ready_to_plot/reclass.age_covar.RDS")
 #################################################################
 #################################################################
 #censoring
+print("censoring")
+
 all_files <- list.files("../censoring/res")
 over_author_list <- list()
 all_authors <- rep(NA, length(all_files))
@@ -99,6 +104,9 @@ saveRDS(over_author_list, "ready_to_plot/reclass.censoring.RDS")
 #################################################################
 #################################################################
 #competing risks
+print("competing risks")
+
+
 all_files <- list.files("../competing_risks/res")
 over_author_list <- list()
 all_authors <- rep(NA, length(all_files))
@@ -154,37 +162,88 @@ saveRDS(over_author_list, "ready_to_plot/reclass.competing_risks.RDS")
 #################################################################
 #################################################################
 #disease labels
-#all_files <- list.files("../disease_labels/res", "RDS")
-#over_author_list <- list()
-#all_authors <- rep(NA, length(all_files))
+print("disease labels")
 
-#k <- 1
-#for(i in 1:length(all_files)){
+all_files <- list.files("../disease_labels/res", "RDS")
+over_author_list <- list()
+all_authors <- rep(NA, length(all_files))
 
-#  all_authors[i] <- strsplit(all_files[i], split = ".", fixed = T)[[1]][1]
-#  res <- readRDS(paste0("../disease_labels/res/", all_files[i]))
+k <- 1
+for(i in 1:length(all_files)){
 
-#  unchange_res <- readRDS(paste0("../age_covar/res/", all_authors[i], ".RDS"))
-#  unchanged_score <- unchange_res[["unchanged"]][["score"]][["risk"]]
-#  unchanged_base <- unchange_res[["unchanged"]][["base"]][["risk"]]
+  all_authors[i] <- strsplit(all_files[i], split = ".", fixed = T)[[1]][1]
+  res <- readRDS(paste0("../disease_labels/res/", all_files[i]))
 
-#  reclass_list <- list()
-#  jj <- 1
-#  for(j in 1:6){
+  unchange_res <- readRDS(paste0("../age_covar/res/", all_authors[i], ".RDS"))
+  unchanged_score <- unchange_res[["unchanged"]][["score"]][["risk"]]
+  unchanged_base <- unchange_res[["unchanged"]][["base"]][["risk"]]
 
-#    #want change in people classified at a few cutoffs and a few times
-#    temp_list <- list(get_reclass_rate(unchanged_base, res[[j]][["base"]][["risk"]], "base", res[[j]][["base"]][["time"]]),
-#                      get_reclass_rate(unchanged_score, res[[j]][["score"]][["risk"]], "score", res[[j]][["score"]][["time"]]),
-#                      get_reclass_rate(unchanged_score - unchanged_base, res[[j]][["score"]][["risk"]] - res[[j]][["base"]][["risk"]], "diff", res[[j]][["score"]][["time"]]))
-#    reclass_list[[jj]] <- do.call("rbind", temp_list)
-#    reclass_list[[jj]]$type <- names(res)[j]
-#    jj <- jj + 1
-#  }
+  reclass_list <- list()
+  jj <- 1
+  for(j in 1:6){
 
-#  over_author_list[[i]] <- do.call("rbind", reclass_list)
-#}
+    #want change in people classified at a few cutoffs and a few times
+    temp_list <- list(get_reclass_rate(unchanged_base, res[[j]][["base"]][["risk"]], "base", res[[j]][["base"]][["time"]]),
+                      get_reclass_rate(unchanged_score, res[[j]][["score"]][["risk"]], "score", res[[j]][["score"]][["time"]]),
+                      get_reclass_rate(unchanged_score - unchanged_base, res[[j]][["score"]][["risk"]] - res[[j]][["base"]][["risk"]], "diff", res[[j]][["score"]][["time"]]))
+    reclass_list[[jj]] <- do.call("rbind", temp_list)
+    reclass_list[[jj]]$type <- names(res)[j]
+    jj <- jj + 1
+  }
 
-#names(over_author_list) <- all_authors
-#saveRDS(over_author_list, "ready_to_plot/reclass.disease_labels.RDS")
+  over_author_list[[i]] <- do.call("rbind", reclass_list)
+}
+
+names(over_author_list) <- all_authors
+saveRDS(over_author_list, "ready_to_plot/reclass.disease_labels.RDS")
+
+
+
+
+
+#################################################################
+#################################################################
+#################################################################
+#adjustment
+print("adjustment")
+
+all_files <- list.files("../adjustment/res", "RDS")
+over_author_list <- list()
+all_authors <- rep(NA, length(all_files))
+
+k <- 1
+for(i in 1:length(all_files)){
+
+  all_authors[i] <- strsplit(all_files[i], split = ".", fixed = T)[[1]][1]
+  res <- readRDS(paste0("../adjustment/res/", all_files[i]))
+
+  unchange_res <- readRDS(paste0("../age_covar/res/", all_authors[i], ".RDS"))
+  unchanged_score <- unchange_res[["unchanged"]][["score"]][["risk"]]
+  unchanged_base <- unchange_res[["unchanged"]][["base"]][["risk"]]
+
+  reclass_list <- list()
+  jj <- 1
+  for(j in 1:7){
+    if(class(res[[j]]) == "list" ){
+      if(!is.null(res[[j]][["score"]])){
+
+
+    #want change in people classified at a few cutoffs and a few times
+    temp_list <- list(get_reclass_rate(unchanged_base, res[[j]][["base"]][["risk"]], "base", res[[j]][["base"]][["time"]]),
+                      get_reclass_rate(unchanged_score, res[[j]][["score"]][["risk"]], "score", res[[j]][["score"]][["time"]]),
+                      get_reclass_rate(unchanged_score - unchanged_base, res[[j]][["score"]][["risk"]] - res[[j]][["base"]][["risk"]], "diff", res[[j]][["score"]][["time"]]))
+    reclass_list[[jj]] <- do.call("rbind", temp_list)
+    reclass_list[[jj]]$type <- names(res)[j]
+    }
+    }
+
+    jj <- jj + 1
+  }
+
+  over_author_list[[i]] <- do.call("rbind", reclass_list)
+}
+
+names(over_author_list) <- all_authors
+saveRDS(over_author_list, "ready_to_plot/reclass.adjustment.RDS")
 
 

@@ -1,7 +1,7 @@
 library(survival)
 
 author = commandArgs(trailingOnly=TRUE)
-#author = "kottgen"
+#author = "wray"
 
 
 system("zcat test_df.gz | cut -f1 -d',' > test_eid")

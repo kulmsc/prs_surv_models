@@ -1,7 +1,13 @@
 library(survival)
 
-author <- "christophersen"
-#author = commandArgs(trailingOnly=TRUE)
+#want to remove age as a covariate from left censor
+#can try to write a function to pull risk from the same time as in right and left censor
+
+
+
+
+#author <- "christophersen"
+author = commandArgs(trailingOnly=TRUE)
 
 #ideally want abs risk val for each year between assessment and now (or from 60 to 80)
 
@@ -28,9 +34,15 @@ test_surv_df$end_date <- as.Date(as.character(test_surv_df$end_date))
 if("sex" %in% colnames(surv_df)){
   base_covars <- c("age + sex + PC1 + PC2 + PC3 + PC4 + PC5 + PC6 + PC7 + PC8 + PC9 + PC10")
   score_covars <- c("age + sex + PC1 + PC2 + PC3 + PC4 + PC5 + PC6 + PC7 + PC8 + PC9 + PC10 + score")
+  left_base_covars <- c("sex + PC1 + PC2 + PC3 + PC4 + PC5 + PC6 + PC7 + PC8 + PC9 + PC10")
+  left_score_covars <- c("sex + PC1 + PC2 + PC3 + PC4 + PC5 + PC6 + PC7 + PC8 + PC9 + PC10 + score")
+
 } else {
   base_covars <- c("age + PC1 + PC2 + PC3 + PC4 + PC5 + PC6 + PC7 + PC8 + PC9 + PC10")
   score_covars <- c("age + PC1 + PC2 + PC3 + PC4 + PC5 + PC6 + PC7 + PC8 + PC9 + PC10 + score")
+  left_base_covars <- c("PC1 + PC2 + PC3 + PC4 + PC5 + PC6 + PC7 + PC8 + PC9 + PC10")
+  left_score_covars <- c("PC1 + PC2 + PC3 + PC4 + PC5 + PC6 + PC7 + PC8 + PC9 + PC10 + score")
+
 }
 
 
@@ -62,6 +74,66 @@ get_survfit <- function(fit_model, new_data, desire_time, input_model = "ms"){
 }
 
 
+faster_fit <- function(fit_model, new_data, desire_time, model_type = "cox"){
+  if(model_type == "ms"){
+    coefs <- fit_model$coef[grep("1:3", names(fit_model$coef))]
+    coef_names <- unlist(lapply(strsplit(names(coefs), "_"), function(x) x[1]))
+  } else {
+    coefs <- fit_model$coef
+    coef_names <- names(fit_model$coef)
+  }
+  new_data <- new_data[,colnames(new_data) %in% coef_names]
+  new_data <- new_data[,order(colnames(new_data))]
+  coefs <- coefs[order(coef_names)]
+
+  simple_preds <- colSums(t(new_data) * coefs)
+
+  fit_prod <- survfit(fit_model, newdata = new_data[1:1000,], se.fit = FALSE)
+  if(model_type == "ms"){
+    fit_prod <- cbind(fit_prod$time, fit_prod$cumhaz[,,2])
+    fit_prod <- fit_prod[get_inds(fit_prod[,1], desire_time),]
+  } else if(model_type == "left"){
+    #fit_prod <- cbind(fit_prod$time, fit_prod$cumhaz)
+    print("LEFT")
+  } else {
+    fit_prod <- cbind(fit_prod$time, fit_prod$cumhaz)
+    fit_prod <- fit_prod[get_inds(fit_prod[,1], desire_time),]
+  }
+
+
+  if(model_type == "left"){
+
+    full_preds <- rbind(do.call("rbind", lapply(1:1000, function(x) fit_prod$cumhaz[get_inds(fit_prod$time, desire_time[x,]),x])),
+                        matrix(0, length(simple_preds)-1000, ncol = ncol(desire_time)))
+    #get inds for everyone
+    mat_inds <- rbind(matrix(-10, nrow = 1000, ncol = ncol(desire_time)),
+                       do.call("rbind", lapply(1001:nrow(full_preds), function(x) get_inds(fit_prod$time, desire_time[x,]))))
+    for(i in 1:length(fit_prod$time)){
+      mod <- lm(fit_prod$cumhaz[i,] ~ exp(simple_preds[1:1000]))
+      temp_ans <- mod$coef[1] + exp(simple_preds)*mod$coef[2]
+      for(j in 1:ncol(full_preds)){
+        full_preds[mat_inds[,j] == i, j] <- temp_ans[mat_inds[,j] == i]
+      }
+    }
+    desire_time <- 1:ncol(full_preds)
+
+  } else {
+    full_preds <- matrix(0, nrow = length(simple_preds), ncol = nrow(fit_prod))
+    for(i in 1:ncol(full_preds)){
+      mod <- lm(fit_prod[i,-1] ~ exp(simple_preds[1:1000]))
+      full_preds[,i] <- mod$coef[1] + exp(simple_preds)*mod$coef[2]
+    }
+  }
+
+
+
+
+  return(rbind(desire_time, full_preds))
+}
+
+
+
+
 
 ################################## UNCHANGED #############################################
 
@@ -69,8 +141,9 @@ cox_model_base <- coxph(as.formula(paste0("Surv(time, pheno) ~ ", base_covars)),
 
 base_conc_obj <- concordance(cox_model_base, newdata=test_surv_df)
 
-cox_fit_base <- get_survfit(cox_model_base, test_surv_df, seq(365, max(test_surv_df$time), 365))
-cox_fit_base <- t(do.call("cbind", cox_fit_base)) #rows are the individuals, cols are the time
+#cox_fit_base <- get_survfit(cox_model_base, test_surv_df, seq(365, max(test_surv_df$time), 365))
+cox_fit_base <- faster_fit(cox_model_base, test_surv_df, seq(365, max(test_surv_df$time), 365))
+#cox_fit_base <- t(do.call("cbind", cox_fit_base)) #rows are the individuals, cols are the time
 cox_fit_base <- list("coef" = summary(cox_model_base)$coef, "time" = cox_fit_base[1,], "risk" = cox_fit_base[cox_fit_base[,1] != cox_fit_base[1,1],], "conc" = base_conc_obj)
 
 
@@ -80,8 +153,9 @@ cox_model_score <- coxph(as.formula(paste0("Surv(time, pheno) ~ ", score_covars)
 
 score_conc_obj <- concordance(cox_model_score, newdata=test_surv_df)
 
-cox_fit_score <- get_survfit(cox_model_score, test_surv_df, seq(365, max(test_surv_df$time), 365))
-cox_fit_score <- t(do.call("cbind", cox_fit_score)) #rows are the individuals, cols are the time
+#cox_fit_score <- get_survfit(cox_model_score, test_surv_df, seq(365, max(test_surv_df$time), 365))
+cox_fit_score <- faster_fit(cox_model_score, test_surv_df, seq(365, max(test_surv_df$time), 365))
+#cox_fit_score <- t(do.call("cbind", cox_fit_score)) #rows are the individuals, cols are the time
 cox_fit_score <- list("coef" = summary(cox_model_score)$coef, "time" = cox_fit_score[1,], "risk" = cox_fit_score[cox_fit_score[,1] != cox_fit_score[1,1],], "conc" = score_conc_obj)
 
 
@@ -90,24 +164,24 @@ unchanged_res <- list("base" = cox_fit_base, "score" = cox_fit_score)
 
 
 #################################### LEFT CENSOR ####################################
+get_left_time <- do.call("rbind", lapply(test_surv_df$age_start_time + 365, function(x) seq(x, x+(13*365), 365)))
 
-
-cox_model_base <- coxph(as.formula(paste0("Surv(age_start_time, age_end_time, pheno) ~ ", base_covars)), data = train_surv_df)
+cox_model_base <- coxph(as.formula(paste0("Surv(age_start_time, age_end_time, pheno) ~ ", left_base_covars)), data = train_surv_df)
 
 base_conc_obj <- concordance(cox_model_base, newdata=test_surv_df)
 
-cox_fit_base <- get_survfit(cox_model_base, test_surv_df, (60:80)*365)
-cox_fit_base <- t(do.call("cbind", cox_fit_base)) #rows are the individuals, cols are the time
+cox_fit_base <- faster_fit(cox_model_base, test_surv_df, get_left_time, "left")
+#cox_fit_base <- t(do.call("cbind", cox_fit_base)) #rows are the individuals, cols are the time
 cox_fit_base <- list("coef" = summary(cox_model_base)$coef, "time" = cox_fit_base[1,], "risk" = cox_fit_base[cox_fit_base[,1] != cox_fit_base[1,1],], "conc" = base_conc_obj)
 
 
 
-cox_model_score <- coxph(as.formula(paste0("Surv(age_start_time, age_end_time, pheno) ~ ", score_covars)), data = train_surv_df)
+cox_model_score <- coxph(as.formula(paste0("Surv(age_start_time, age_end_time, pheno) ~ ", left_score_covars)), data = train_surv_df)
 
 score_conc_obj <- concordance(cox_model_score, newdata=test_surv_df)
 
-cox_fit_score <- get_survfit(cox_model_score, test_surv_df, (60:80)*365)
-cox_fit_score <- t(do.call("cbind", cox_fit_score)) #rows are the individuals, cols are the time
+cox_fit_score <- faster_fit(cox_model_score, test_surv_df, get_left_time, "left")
+#cox_fit_score <- t(do.call("cbind", cox_fit_score)) #rows are the individuals, cols are the time
 cox_fit_score <- list("coef" = summary(cox_model_score)$coef, "time" = cox_fit_score[1,], "risk" = cox_fit_score[cox_fit_score[,1] != cox_fit_score[1,1],], "conc" = score_conc_obj)
 
 
@@ -116,7 +190,6 @@ left_censor_res <- list("base" = cox_fit_base, "score" = cox_fit_score)
 
 
 
-exit()
 
 saveRDS(train_surv_df, "train_surv_df.RDS")
 saveRDS(test_surv_df, "test_surv_df.RDS")
@@ -173,8 +246,8 @@ cox_model_base <- coxph(as.formula(paste0("Surv(ehr_time, pheno) ~ ", base_covar
 
 base_conc_obj <- concordance(cox_model_base, newdata=test_surv_df)
 
-cox_fit_base <- get_survfit(cox_model_base, test_surv_df, seq(365, max(test_surv_df$time), 365))
-cox_fit_base <- t(do.call("cbind", cox_fit_base)) #rows are the individuals, cols are the time
+cox_fit_base <- faster_fit(cox_model_base, test_surv_df, seq(365, max(test_surv_df$ehr_time), 365))
+#cox_fit_base <- t(do.call("cbind", cox_fit_base)) #rows are the individuals, cols are the time
 cox_fit_base <- list("coef" = summary(cox_model_base)$coef, "time" = cox_fit_base[1,], "risk" = cox_fit_base[cox_fit_base[,1] != cox_fit_base[1,1],], "conc" = base_conc_obj)
 
 
@@ -182,8 +255,8 @@ cox_model_score <- coxph(as.formula(paste0("Surv(ehr_time, pheno) ~ ", score_cov
 
 score_conc_obj <- concordance(cox_model_score, newdata=test_surv_df)
 
-cox_fit_score <- get_survfit(cox_model_score, test_surv_df, seq(365, max(test_surv_df$time), 365))
-cox_fit_score <- t(do.call("cbind", cox_fit_score)) #rows are the individuals, cols are the time
+cox_fit_score <- faster_fit(cox_model_score, test_surv_df, seq(365, max(test_surv_df$ehr_time), 365))
+#cox_fit_score <- t(do.call("cbind", cox_fit_score)) #rows are the individuals, cols are the time
 cox_fit_score <- list("coef" = summary(cox_model_score)$coef, "time" = cox_fit_score[1,], "risk" = cox_fit_score[cox_fit_score[,1] != cox_fit_score[1,1],], "conc" = score_conc_obj)
 
 
@@ -210,24 +283,27 @@ test_surv_df <- test_surv_df[is.finite(test_surv_df$ehr_start_time),]
 train_surv_df <- train_surv_df[train_surv_df$ehr_start_time < train_surv_df$ehr_end_time,]
 test_surv_df <- test_surv_df[test_surv_df$ehr_start_time < test_surv_df$ehr_end_time,]
 
+get_left_time <- do.call("rbind", lapply(test_surv_df$ehr_start_time + 365, function(x) seq(x, x+(13*365), 365)))
 
-cox_model_base <- coxph(as.formula(paste0("Surv(ehr_start_time, ehr_end_time, pheno) ~ ", base_covars)), data = train_surv_df)
+
+
+cox_model_base <- coxph(as.formula(paste0("Surv(ehr_start_time, ehr_end_time, pheno) ~ ", left_base_covars)), data = train_surv_df)
 
 base_conc_obj <- concordance(cox_model_base, newdata=test_surv_df)
 
-cox_fit_base <- get_survfit(cox_model_base, test_surv_df, (60:80)*365)
-cox_fit_base <- t(do.call("cbind", cox_fit_base)) #rows are the individuals, cols are the time
+cox_fit_base <- faster_fit(cox_model_base, test_surv_df, get_left_time, "left")
+#cox_fit_base <- t(do.call("cbind", cox_fit_base)) #rows are the individuals, cols are the time
 cox_fit_base <- list("coef" = summary(cox_model_base)$coef, "time" = cox_fit_base[1,], "risk" = cox_fit_base[cox_fit_base[,1] != cox_fit_base[1,1],], "conc" = base_conc_obj)
 
 
 
 
-cox_model_score <- coxph(as.formula(paste0("Surv(ehr_start_time, ehr_end_time, pheno) ~ ", score_covars)), data = train_surv_df)
+cox_model_score <- coxph(as.formula(paste0("Surv(ehr_start_time, ehr_end_time, pheno) ~ ", left_score_covars)), data = train_surv_df)
 
 score_conc_obj <- concordance(cox_model_score, newdata=test_surv_df)
 
-cox_fit_score <- get_survfit(cox_model_score, test_surv_df, (60:80)*365)
-cox_fit_score <- t(do.call("cbind", cox_fit_score)) #rows are the individuals, cols are the time
+cox_fit_score <- faster_fit(cox_model_score, test_surv_df, get_left_time, "left")
+#cox_fit_score <- t(do.call("cbind", cox_fit_score)) #rows are the individuals, cols are the time
 cox_fit_score <- list("coef" = summary(cox_model_score)$coef, "time" = cox_fit_score[1,], "risk" = cox_fit_score[cox_fit_score[,1] != cox_fit_score[1,1],], "conc" = score_conc_obj)
 
 
@@ -251,8 +327,8 @@ cox_model_base <- coxph(as.formula(paste0("Surv(time, pheno) ~ ", base_covars)),
 
 base_conc_obj <- concordance(cox_model_base, newdata=test_surv_df)
 
-cox_fit_base <- get_survfit(cox_model_base, test_surv_df, seq(365, max(test_surv_df$time), 365))
-cox_fit_base <- t(do.call("cbind", cox_fit_base)) #rows are the individuals, cols are the time
+cox_fit_base <- faster_fit(cox_model_base, test_surv_df, seq(365, max(test_surv_df$time), 365))
+#cox_fit_base <- t(do.call("cbind", cox_fit_base)) #rows are the individuals, cols are the time
 cox_fit_base <- list("coef" = summary(cox_model_base)$coef, "time" = cox_fit_base[1,], "risk" = cox_fit_base[cox_fit_base[,1] != cox_fit_base[1,1],], "conc" = base_conc_obj)
 
 
@@ -262,8 +338,8 @@ cox_model_score <- coxph(as.formula(paste0("Surv(time, pheno) ~ ", score_covars)
 
 score_conc_obj <- concordance(cox_model_score, newdata=test_surv_df)
 
-cox_fit_score <- get_survfit(cox_model_score, test_surv_df, seq(365, max(test_surv_df$time), 365))
-cox_fit_score <- t(do.call("cbind", cox_fit_score)) #rows are the individuals, cols are the time
+cox_fit_score <- faster_fit(cox_model_score, test_surv_df, seq(365, max(test_surv_df$time), 365))
+#cox_fit_score <- t(do.call("cbind", cox_fit_score)) #rows are the individuals, cols are the time
 cox_fit_score <- list("coef" = summary(cox_model_score)$coef, "time" = cox_fit_score[1,], "risk" = cox_fit_score[cox_fit_score[,1] != cox_fit_score[1,1],], "conc" = score_conc_obj)
 
 

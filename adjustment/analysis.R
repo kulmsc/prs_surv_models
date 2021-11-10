@@ -1,7 +1,7 @@
 library(survival)
 
 author = commandArgs(trailingOnly=TRUE)
-#author = "wray"
+#author = "jin"
 
 
 system("zcat test_df.gz | cut -f1 -d',' > test_eid")
@@ -137,9 +137,13 @@ top_takes <- c(3, 5, 10)
 for(i in 1:3){
   curr_inds <- which(abs(coef[,2]) >= sort(abs(coef[,2]), decreasing=T)[top_takes[i]])
   curr_names <- paste("col", curr_inds, sep="_")
-
-  all_base_covars[[i]] <- paste(base_covars, "+", paste(curr_names, collapse="+"))
-  all_score_covars[[i]] <- paste(score_covars, "+", paste(curr_names, collapse="+"))
+  if(length(curr_inds) > top_takes[i] + 1){
+    all_base_covars[[i]] <- NA
+    all_score_covars[[i]] <- NA
+   } else {
+    all_base_covars[[i]] <- paste(base_covars, "+", paste(curr_names, collapse="+"))
+    all_score_covars[[i]] <- paste(score_covars, "+", paste(curr_names, collapse="+"))
+  }
 }
 
 top_takes <- 1:3
@@ -147,9 +151,13 @@ top_takes <- 1:3
 for(i in 1:3){
   curr_inds <- which(abs(coef[,2]) == sort(abs(coef[,2]), decreasing=T)[top_takes[i]])
   curr_names <- paste("col", curr_inds, sep="_")
-
-  all_base_covars[[i+3]] <- paste(base_covars, "+", paste(curr_names, collapse="+"))
-  all_score_covars[[i+3]] <- paste(score_covars, "+", paste(curr_names, collapse="+"))
+  if(length(curr_inds) > top_takes[i] + 1){
+    all_base_covars[[i+3]] <- NA
+    all_score_covars[[i+3]] <- NA
+  } else {
+    all_base_covars[[i+3]] <- paste(base_covars, "+", paste(curr_names, collapse="+"))
+    all_score_covars[[i+3]] <- paste(score_covars, "+", paste(curr_names, collapse="+"))
+  }
 }
 
 
@@ -165,27 +173,38 @@ all_res <- list()
 
 
 for(i in 1:7){
+  if(!is.na(all_base_covars[[i]])){
   cox_model_base <- coxph(as.formula(paste0("Surv(time, pheno) ~ ", all_base_covars[[i]])), data = train_surv_df)
 
+  if(any(is.na(cox_model_base$coef))){
+    cox_fit_base <- NULL
+  } else {
   base_conc_obj <- concordance(cox_model_base, newdata=test_surv_df)
 
   #cox_fit_base <- get_survfit(cox_model_base, test_surv_df, seq(365, max(test_surv_df$time), 365))
   cox_fit_base <- faster_fit(cox_model_base, test_surv_df, seq(365, max(test_surv_df$time), 365))
   #cox_fit_base <- t(do.call("cbind", cox_fit_base)) #rows are the individuals, cols are the time
   cox_fit_base <- list("coef" = summary(cox_model_base)$coef, "time" = cox_fit_base[1,], "risk" = cox_fit_base[-1,], "conc" = base_conc_obj)
+  }
 
 
   cox_model_score <- coxph(as.formula(paste0("Surv(time, pheno) ~ ", all_score_covars[[i]])), data = train_surv_df)
 
-  score_conc_obj <- concordance(cox_model_score, newdata=test_surv_df)
+  if(any(is.na(cox_model_base$coef))){
+    cox_fit_score <- NULL
+  } else {
+    score_conc_obj <- concordance(cox_model_score, newdata=test_surv_df)
 
-  #cox_fit_score <- get_survfit(cox_model_score, test_surv_df, seq(365, max(test_surv_df$time), 365))
-  cox_fit_score <- faster_fit(cox_model_score, test_surv_df, seq(365, max(test_surv_df$time), 365))
-  #cox_fit_score <- t(do.call("cbind", cox_fit_score)) #rows are the individuals, cols are the time
-  cox_fit_score <- list("coef" = summary(cox_model_score)$coef, "time" = cox_fit_score[1,], "risk" = cox_fit_score[-1,], "conc" = score_conc_obj)
+    #cox_fit_score <- get_survfit(cox_model_score, test_surv_df, seq(365, max(test_surv_df$time), 365))
+    cox_fit_score <- faster_fit(cox_model_score, test_surv_df, seq(365, max(test_surv_df$time), 365))
+    #cox_fit_score <- t(do.call("cbind", cox_fit_score)) #rows are the individuals, cols are the time
+    cox_fit_score <- list("coef" = summary(cox_model_score)$coef, "time" = cox_fit_score[1,], "risk" = cox_fit_score[-1,], "conc" = score_conc_obj)
+  }
 
   all_res[[i]] <- list("base" = cox_fit_base, "score" = cox_fit_score)
-
+  } else {
+  all_res[[i]] <- "NA"
+  }
 }
 
 

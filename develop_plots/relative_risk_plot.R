@@ -1,6 +1,11 @@
 library(epitools)
 
 get_or <- function(vec, iden, hi_cut, low_cut){
+  if(length(vec) != length(iden)){
+    print("MISMATCH")
+    exit()
+  }
+
   group <- rep(1, length(vec))
   group[vec < quantile(vec, low_cut)] <- 0
   group[vec > quantile(vec, hi_cut)] <- 2
@@ -14,12 +19,22 @@ get_or <- function(vec, iden, hi_cut, low_cut){
 }
 
 get_prev <- function(vec, iden, hi_cut){
+  if(length(vec) != length(iden)){
+    print("MISMATCH")
+    exit()
+  }
+
   prev_val <- sum(iden[vec > quantile(vec, hi_cut)] == 1)/sum(vec > quantile(vec, hi_cut))
   return(c(prev_val, hi_cut))
 }
 
 
 get_diff <- function(base_vec, score_vec, iden, hi_cut){
+  if(length(score_vec) != length(iden) | length(base_vec) != length(iden)){
+    print("MISMATCH")
+    exit()
+  }
+
   base_ind <- which(base_vec > quantile(base_vec, hi_cut))
   score_ind <- which(score_vec > quantile(score_vec, hi_cut))
 
@@ -58,11 +73,11 @@ get_surv <- function(author){
 
 
 
-
 #####################################################################
 #####################################################################
 #####################################################################
 #age
+print("age")
 
 all_files <- list.files("../age_covar/res")
 all_author <- rep(NA, length(all_files))
@@ -140,6 +155,8 @@ saveRDS(list("prev" = all_prev, "or" = all_or, "diff" = all_diff), "ready_to_plo
 #####################################################################
 #####################################################################
 #censoring
+print("censoring")
+
 
 all_files <- list.files("../censoring/res")
 all_author <- rep(NA, length(all_files))
@@ -161,18 +178,26 @@ for(i in 1:length(all_files)){
   temp_diff <- list()
 
 
-  for(j in 1:length(res)){
+  for(j in 1:5){
+
+    if(j < 4){
+      use_phen <- res[["phen"]][[1]]
+    } else if(j == 4){
+      use_phen <- res[["phen"]][[2]]
+    } else {
+      use_phen <- res[["phen"]][[3]]
+    }
 
     for(hicut in c(0.9, 0.95, 0.99)){
 
       max_col <- ncol(res[[j]][["base"]][["risk"]])
-      temp_prev_base[[k]] <-  get_prev(res[[j]][["base"]][["risk"]][,max_col], surv_dfs[[2]]$pheno, hicut)
-      temp_prev_score[[k]] <-  get_prev(res[[j]][["score"]][["risk"]][,max_col], surv_dfs[[2]]$pheno, hicut)
+      temp_prev_base[[k]] <-  get_prev(res[[j]][["base"]][["risk"]][,max_col], use_phen, hicut)
+      temp_prev_score[[k]] <-  get_prev(res[[j]][["score"]][["risk"]][,max_col], use_phen, hicut)
 
-      temp_or_base[[k]] <- get_or(res[[j]][["base"]][["risk"]][,max_col], surv_dfs[[2]]$pheno, hicut, 0.5)
-      temp_or_score[[k]] <- get_or(res[[j]][["score"]][["risk"]][,max_col], surv_dfs[[2]]$pheno, hicut, 0.5)
+      temp_or_base[[k]] <- get_or(res[[j]][["base"]][["risk"]][,max_col], use_phen, hicut, 0.5)
+      temp_or_score[[k]] <- get_or(res[[j]][["score"]][["risk"]][,max_col], use_phen, hicut, 0.5)
 
-      temp_diff[[k]] <- get_diff(res[[j]][["base"]][["risk"]][,max_col], res[[j]][["score"]][["risk"]][,14], surv_dfs[[2]]$pheno, hicut)
+      temp_diff[[k]] <- get_diff(res[[j]][["base"]][["risk"]][,max_col], res[[j]][["score"]][["risk"]][,14], use_phen, hicut)
 
       k <- k + 1
 
@@ -182,17 +207,17 @@ for(i in 1:length(all_files)){
   all_prev[[i]] <- as.data.frame(rbind(do.call("rbind", temp_prev_base), do.call("rbind", temp_prev_score)))
   colnames(all_prev[[i]]) <- c("prev", "cutoff")
   all_prev[[i]]$type <- rep(c("base", "score"), each = length(temp_prev_base))
-  all_prev[[i]]$model <- rep(names(res), each = 3)
+  all_prev[[i]]$model <- rep(names(res)[1:5], each = 3)
 
   all_or[[i]] <- as.data.frame(rbind(do.call("rbind", temp_or_base), do.call("rbind", temp_or_score)))
   colnames(all_or[[i]]) <- c("low_or", "or", "hi_or", "hi_cutoff", "lo_cutoff")
   all_or[[i]]$type <- rep(c("base", "score"), each = length(temp_or_base))
-  all_or[[i]]$model <- rep(names(res), each = 3)
+  all_or[[i]]$model <- rep(names(res)[1:5], each = 3)
 
 
   all_diff[[i]] <- as.data.frame(do.call("rbind", temp_diff))
   colnames(all_diff[[i]]) <- c("score_diff", "base_diff", "cutoff")
-  all_diff[[i]]$model <- rep(names(res), each = 3)
+  all_diff[[i]]$model <- rep(names(res)[1:5], each = 3)
 
 
 }
@@ -212,6 +237,7 @@ saveRDS(list("prev" = all_prev, "or" = all_or, "diff" = all_diff), "ready_to_plo
 ###############################################################################
 ###############################################################################
 #competing risks
+print("competing risks")
 
 
 all_files <- list.files("../competing_risks/res")
@@ -301,4 +327,159 @@ names(all_diff) <- all_author
 
 saveRDS(list("prev" = all_prev, "or" = all_or, "diff" = all_diff), "ready_to_plot/relative_risk.competing_risks.RDS")
 
+
+
+
+
+
+###############################################################################
+###############################################################################
+###############################################################################
+###############################################################################
+#disease labels
+print("disease labels")
+
+
+all_files <- list.files("../disease_labels/res", "RDS")
+all_author <- rep(NA, length(all_files))
+all_prev <- list()
+all_or <- list()
+all_diff <- list()
+all_python_conc <- list()
+
+for(i in 1:length(all_files)){
+  res <- readRDS(paste0("../disease_labels/res/", all_files[i]))
+  author_name <- strsplit(all_files[i], split = ".", fixed = T)[[1]][1]
+  all_author[i] <- author_name
+
+  all_python_conc[[i]] <- c("conc" = res[[7]][["conc"]][6], "std" = res[[7]][["conc"]][7])
+
+  k <- 1
+  temp_prev_base <- list()
+  temp_prev_score <- list()
+  temp_or_base <- list()
+  temp_or_score <- list()
+  temp_diff <- list()
+
+  for(j in 1:6){
+    for(hicut in c(0.9, 0.95, 0.99)){
+      max_col <- ncol(res[[j]][["base"]][["risk"]])
+      temp_prev_base[[k]] <-  get_prev(res[[j]][["base"]][["risk"]][,max_col], res[[j]][["pheno"]], hicut)
+      temp_prev_score[[k]] <-  get_prev(res[[j]][["score"]][["risk"]][,max_col], res[[j]][["pheno"]], hicut)
+
+      temp_or_base[[k]] <- get_or(res[[j]][["base"]][["risk"]][,max_col], res[[j]][["pheno"]], hicut, 0.5)
+      temp_or_score[[k]] <- get_or(res[[j]][["score"]][["risk"]][,max_col], res[[j]][["pheno"]], hicut, 0.5)
+
+      temp_diff[[k]] <- get_diff(res[[j]][["base"]][["risk"]][,max_col], res[[j]][["score"]][["risk"]][,14], res[[j]][["pheno"]], hicut)
+
+      k <- k + 1
+    }
+  }
+
+  all_prev[[i]] <- as.data.frame(rbind(do.call("rbind", temp_prev_base), do.call("rbind", temp_prev_score)))
+  colnames(all_prev[[i]]) <- c("prev", "cutoff")
+  all_prev[[i]]$type <- rep(c("base", "score"), each = length(temp_prev_base))
+  all_prev[[i]]$model <- rep(names(res)[1:6], each = 3)
+
+  all_or[[i]] <- as.data.frame(rbind(do.call("rbind", temp_or_base), do.call("rbind", temp_or_score)))
+  colnames(all_or[[i]]) <- c("low_or", "or", "hi_or", "hi_cutoff", "lo_cutoff")
+  all_or[[i]]$type <- rep(c("base", "score"), each = length(temp_or_base))
+  all_or[[i]]$model <- rep(names(res)[1:6], each = 3)
+
+
+  all_diff[[i]] <- as.data.frame(do.call("rbind", temp_diff))
+  colnames(all_diff[[i]]) <- c("score_diff", "base_diff", "cutoff")
+  all_diff[[i]]$model <- rep(names(res)[1:6], each = 3)
+}
+
+all_python_conc <- as.data.frame(do.call("rbind", all_python_conc))
+all_python_conc$author <- all_author
+
+names(all_prev) <- all_author
+names(all_or) <- all_author
+names(all_diff) <- all_author
+
+saveRDS(list("prev" = all_prev, "or" = all_or, "diff" = all_diff, "python" = all_python_conc), "ready_to_plot/relative_risk.disease_labels.RDS")
+
+
+
+
+
+
+###############################################################################
+###############################################################################
+###############################################################################
+###############################################################################
+#adjustment
+print("adjustment")
+
+
+all_files <- list.files("../adjustment/res", "RDS")
+all_author <- rep(NA, length(all_files))
+all_prev <- list()
+all_or <- list()
+all_diff <- list()
+all_python_conc <- list()
+
+for(i in 1:length(all_files)){
+  res <- readRDS(paste0("../adjustment/res/", all_files[i]))
+  author_name <- strsplit(all_files[i], split = ".", fixed = T)[[1]][1]
+  all_author[i] <- author_name
+  #surv_dfs <- get_surv(author_name)
+
+  all_python_conc[[i]] <- c("conc" = res[[8]][["conc"]][6], "std" = res[[8]][["conc"]][7])
+
+  k <- 1
+  temp_prev_base <- list()
+  temp_prev_score <- list()
+  temp_or_base <- list()
+  temp_or_score <- list()
+  temp_diff <- list()
+
+  non_na_names <- rep("", 7)
+ for(j in 1:7){
+    if(class(res[[j]]) == "list" ){
+      if(!is.null(res[[j]][["score"]])){
+
+    non_na_names[j] <- names(res)[j]
+    for(hicut in c(0.9, 0.95, 0.99)){
+      max_col <- ncol(res[[j]][["base"]][["risk"]])
+      temp_prev_base[[k]] <-  get_prev(res[[j]][["base"]][["risk"]][,max_col], res[["pheno"]], hicut)
+      temp_prev_score[[k]] <-  get_prev(res[[j]][["score"]][["risk"]][,max_col], res[["pheno"]], hicut)
+
+      temp_or_base[[k]] <- get_or(res[[j]][["base"]][["risk"]][,max_col], res[["pheno"]], hicut, 0.5)
+      temp_or_score[[k]] <- get_or(res[[j]][["score"]][["risk"]][,max_col], res[["pheno"]], hicut, 0.5)
+
+      temp_diff[[k]] <- get_diff(res[[j]][["base"]][["risk"]][,max_col], res[[j]][["score"]][["risk"]][,14], res[["pheno"]], hicut)
+
+      k <- k + 1
+    }
+    }
+    }
+  }
+
+  non_na_names <- non_na_names[non_na_names != ""]
+  all_prev[[i]] <- as.data.frame(rbind(do.call("rbind", temp_prev_base), do.call("rbind", temp_prev_score)))
+  colnames(all_prev[[i]]) <- c("prev", "cutoff")
+  all_prev[[i]]$type <- rep(c("base", "score"), each = length(temp_prev_base))
+  all_prev[[i]]$model <- rep(non_na_names, each = 3)
+
+  all_or[[i]] <- as.data.frame(rbind(do.call("rbind", temp_or_base), do.call("rbind", temp_or_score)))
+  colnames(all_or[[i]]) <- c("low_or", "or", "hi_or", "hi_cutoff", "lo_cutoff")
+  all_or[[i]]$type <- rep(c("base", "score"), each = length(temp_or_base))
+  all_or[[i]]$model <- rep(non_na_names, each = 3)
+
+  all_diff[[i]] <- as.data.frame(do.call("rbind", temp_diff))
+  colnames(all_diff[[i]]) <- c("score_diff", "base_diff", "cutoff")
+  all_diff[[i]]$model <- rep(non_na_names, each = 3)
+}
+
+all_python_conc <- as.data.frame(do.call("rbind", all_python_conc))
+all_python_conc$author <- all_author
+
+names(all_prev) <- all_author
+names(all_or) <- all_author
+names(all_diff) <- all_author
+
+saveRDS(list("prev" = all_prev, "or" = all_or, "diff" = all_diff, "python" = all_python_conc), "ready_to_plot/relative_risk.adjustment.RDS")
 

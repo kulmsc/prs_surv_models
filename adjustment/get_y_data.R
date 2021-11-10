@@ -1,6 +1,6 @@
 
 author = commandArgs(trailingOnly=TRUE)
-#author = "demenais"
+#author = "shah"
 
 system("rm train_df.gz")
 system("rm test_df.gz")
@@ -31,11 +31,19 @@ big_data[[1]] <- big_data[[1]][,colnames(big_data[[1]]) %in% colnames(big_data[[
 big_data[[2]] <- big_data[[2]][,colnames(big_data[[2]]) %in% colnames(big_data[[1]])]
 
 
-
 train_eid <- read.table("../init_data/clean_big_data/train_full_eids_big_data_order.txt", stringsAsFactors=F)
 if(!all(big_data[[1]]$eid[1:10] == train_eid[1:10,1])){
 mod <- lm(train_eid[1:3,1] ~ big_data[[1]]$eid[1:3])
-if(summary(mod)$r.squared != 1){print("STOP")}
+if(summary(mod)$r.squared != 1){
+  print("STOP")
+  mod <- lm(train_eid[1:2,1] ~ big_data[[1]]$eid[1:2])
+  if(all(round(big_data[[1]]$eid*mod$coef[2] + mod$coef[1])[1:10] %in% train_eid[,1])){
+    print("GOOD")
+  } else {
+    print("BAD!!!!!!!!!!!!!!!!!!!!!!!!!")
+  }
+}
+
 big_data[[1]]$eid <- round(big_data[[1]]$eid*mod$coef[2] + mod$coef[1])
 print("R SQUARED")
 print(summary(mod)$r.squared)
@@ -44,7 +52,15 @@ print(summary(mod)$r.squared)
 test_eid <- read.table("../init_data/clean_big_data/test_full_eids_big_data_order.txt", stringsAsFactors=F)
 if(!all(big_data[[2]]$eid[1:10] == test_eid[1:10,1])){
 mod <- lm(test_eid[1:3,1] ~ big_data[[2]]$eid[1:3])
-if(summary(mod)$r.squared != 1){print("STOP")}
+if(summary(mod)$r.squared != 1){
+  print("STOP")
+  mod <- lm(test_eid[1:2,1] ~ big_data[[2]]$eid[1:2])
+  if(all(round(big_data[[2]]$eid*mod$coef[2] + mod$coef[1])[1:10] %in% test_eid[,1])){
+    print("GOOD")
+  } else {
+    print("BAD!!!!!!!!!!!!!!!!!!!!!!!!!")
+  }
+}
 big_data[[2]]$eid <- round(big_data[[2]]$eid*mod$coef[2] + mod$coef[1])
 print("R SQUARED")
 print(summary(mod)$r.squared)
